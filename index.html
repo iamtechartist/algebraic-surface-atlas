@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Algebraic Surfaces</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --theme-color: #ff2a9f;
+      --theme-glow: rgba(255, 42, 159, 0.25);
+      --text-main: #f0f3f6;
+      --text-muted: #8899a6;
+      --bg-black: #000000;
+      --panel-bg: rgba(0, 0, 0, 0.35);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --panel-blur: blur(20px) saturate(180%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-black);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
+
+    #webgl {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.9) 100%);
+    }
+
+    .grid-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      opacity: 0.08;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    .ui {
+      position: fixed;
+      z-index: 10;
+      pointer-events: auto;
+      transition:
+        transform 0.5s cubic-bezier(0.25, 1, 0.5, 1),
+        opacity 0.5s cubic-bezier(0.25, 1, 0.5, 1),
+        border-color 0.6s ease,
+        box-shadow 0.6s ease;
+    }
+
+    .ui::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    .ui::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .ui::-webkit-scrollbar-thumb {
+      background: var(--theme-color);
+      border-radius: 2px;
+    }
+
+    #hud-left {
+      left: 15px;
+      top: 15px;
+      display: flex;
+      flex-direction: column;
+      width: 240px;
+      max-height: calc(100vh - 30px);
+      overflow-y: auto;
+      padding: 12px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: var(--panel-bg);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--theme-glow);
+      backdrop-filter: var(--panel-blur);
+    }
+
+    .panel-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+
+    .panel-close-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      cursor: pointer;
+      color: var(--text-muted);
+      border: none;
+      border-radius: 4px;
+      background: none;
+      transition: all 0.3s ease;
+    }
+
+    .panel-close-btn:hover {
+      color: var(--theme-color);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .panel-close-btn svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+
+    .lab-tag {
+      color: var(--theme-color);
+      font-family: monospace;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      transition: color 0.6s ease;
+    }
+
+    .atlas-title {
+      margin-bottom: 2px;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 300;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 9px;
+      line-height: 1.25;
+      letter-spacing: 0.01em;
+    }
+
+    .divider {
+      width: 100%;
+      height: 1px;
+      margin: 6px 0;
+      opacity: 0.5;
+      background: linear-gradient(90deg, var(--theme-color), rgba(255, 255, 255, 0.01));
+      transition: background 0.6s ease;
+    }
+
+    .section {
+      margin-bottom: 8px;
+      opacity: 1;
+      transform: translateX(0);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    #hud-left.updating .section {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+
+    .section-label {
+      margin-bottom: 2px;
+      color: var(--theme-color);
+      font-family: monospace;
+      font-size: 8.5px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: color 0.6s ease;
+    }
+
+    .section-body {
+      color: var(--text-muted);
+      font-size: 10px;
+      line-height: 1.4;
+      letter-spacing: 0.01em;
+    }
+
+    #math-formula {
+      margin-top: 2px;
+      overflow-x: auto;
+      padding: 4px 6px;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    #math-formula .katex-display {
+      margin: 2px 0 !important;
+      font-size: 0.74em;
+    }
+
+    #properties-list {
+      padding-left: 10px;
+      list-style-type: none;
+    }
+
+    #properties-list li {
+      position: relative;
+      margin-bottom: 3px;
+      color: var(--text-main);
+    }
+
+    #properties-list li::before {
+      position: absolute;
+      left: -10px;
+      top: 1px;
+      color: var(--theme-color);
+      font-size: 5px;
+      content: "▪";
+      transition: color 0.6s ease;
+    }
+
+    .gradient-legend {
+      width: 100%;
+      height: 3px;
+      margin-top: 4px;
+      border-radius: 2px;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.03);
+      transition: background 0.6s ease;
+    }
+
+    .legend-ticks {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 3px;
+      color: var(--text-muted);
+      font-family: monospace;
+      font-size: 8px;
+    }
+
+    #hud-right {
+      right: 15px;
+      top: 15px;
+      display: flex;
+      flex-direction: column;
+      width: 150px;
+      max-height: calc(100vh - 30px);
+      overflow-y: auto;
+      padding: 12px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: var(--panel-bg);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--theme-glow);
+      backdrop-filter: var(--panel-blur);
+    }
+
+    .params-block {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: var(--text-muted);
+      font-family: monospace;
+      font-size: 9px;
+      letter-spacing: 0.02em;
+    }
+
+    .param-row span:last-child {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .selector-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .diagram {
+      position: relative;
+      width: 100%;
+      height: 75px;
+      overflow: hidden;
+      cursor: pointer;
+      opacity: 0.45;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 5px;
+      background: rgba(0, 0, 0, 0.7);
+      transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .diagram:hover {
+      opacity: 0.8;
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .diagram.active {
+      opacity: 1;
+      border-color: var(--theme-color);
+      box-shadow: 0 0 10px var(--theme-glow), inset 0 0 5px rgba(255, 255, 255, 0.02);
+      transform: translateY(-1.5px);
+    }
+
+    .diagram canvas {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .diagram-info {
+      position: absolute;
+      left: 6px;
+      bottom: 2px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .diagram-name {
+      color: #ffffff;
+      font-family: monospace;
+      font-size: 8px;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+    }
+
+    .diagram-tag {
+      color: var(--theme-color);
+      font-family: monospace;
+      font-size: 6.5px;
+      letter-spacing: 0.02em;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+      transition: color 0.6s ease;
+    }
+
+    .edge-trigger {
+      position: fixed;
+      top: 50%;
+      z-index: 15;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 54px;
+      cursor: pointer;
+      opacity: 0;
+      color: var(--text-muted);
+      pointer-events: none;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      backdrop-filter: var(--panel-blur);
+      transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .edge-trigger:hover {
+      color: var(--theme-color);
+      border-color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 10%, transparent);
+      box-shadow: 0 0 12px var(--theme-glow);
+    }
+
+    .edge-trigger svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    #trigger-left {
+      left: 0;
+      border-left: none;
+      border-radius: 0 6px 6px 0;
+      transform: translateY(-50%) translateX(-22px);
+    }
+
+    #trigger-right {
+      right: 0;
+      border-right: none;
+      border-radius: 6px 0 0 6px;
+      transform: translateY(-50%) translateX(22px);
+    }
+
+    #hud-left.collapsed {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-265px);
+    }
+
+    #hud-right.collapsed {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(175px);
+    }
+
+    body.left-collapsed #trigger-left,
+    body.right-collapsed #trigger-right {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(-50%) translateX(0);
+    }
+
+    #boot-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      background: var(--bg-black);
+      font-family: monospace;
+      font-size: 10px;
+      letter-spacing: 0.35em;
+      transition: opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-top-color: var(--theme-color);
+      border-right-color: var(--theme-color);
+      border-radius: 50%;
+      box-shadow: 0 0 15px var(--theme-glow);
+      animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    @keyframes spin {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 800px) {
+      #hud-left {
+        width: 220px;
+      }
+
+      #hud-right {
+        width: 140px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      #hud-left {
+        position: fixed;
+        left: 15px;
+        top: 15px;
+        width: 230px;
+        max-height: calc(100vh - 30px);
+      }
+
+      #hud-right {
+        position: fixed;
+        right: 15px;
+        top: 15px;
+        width: 140px;
+        max-height: calc(100vh - 30px);
+      }
+
+      #webgl {
+        z-index: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="boot-screen">
+    <div class="spinner"></div>
+    <div id="boot-text">RESOLVING VOLUMETRIC TOPOLOGY...</div>
+  </div>
+
+  <canvas id="webgl"></canvas>
+  <div class="grid-overlay"></div>
+  <div class="vignette"></div>
+
+  <div id="trigger-left" class="edge-trigger" title="Expand Lab Deck">
+    <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+  </div>
+  <div id="trigger-right" class="edge-trigger" title="Expand Console">
+    <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+  </div>
+
+  <aside id="hud-left" class="ui">
+    <div class="panel-header-row">
+      <div class="lab-tag">TOPOLOGY LAB DECK</div>
+      <button class="panel-close-btn" id="close-left" title="Collapse Panel">
+        <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+      </button>
+    </div>
+    <div class="lab-header">
+      <div id="hudTitle" class="atlas-title">BARTH SEXTIC</div>
+      <div id="hud-subtitle" class="subtitle">Icosahedral nodal crystal and symmetric apertures.</div>
+    </div>
+    <div class="divider"></div>
+
+    <section class="section">
+      <div class="section-label">Topology Classification</div>
+      <div id="definition" class="section-body"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-label">Algebraic Implicit Equation</div>
+      <div id="math-formula" class="section-body"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-label">Manifold Metrics</div>
+      <ul id="properties-list" class="section-body"></ul>
+    </section>
+
+    <section class="section" style="margin-bottom: 0;">
+      <div class="section-label">Surface Feature Response</div>
+      <div class="gradient-legend" id="hud-legend"></div>
+      <div class="legend-ticks">
+        <span>BODY</span>
+        <span>CURVE</span>
+        <span>RIM</span>
+      </div>
+    </section>
+  </aside>
+
+  <aside id="hud-right" class="ui">
+    <div class="panel-header-row" style="margin-bottom: 6px;">
+      <div class="section-label" style="margin: 0;">LAB COORDINATES</div>
+      <button class="panel-close-btn" id="close-right" title="Collapse Panel">
+        <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </button>
+    </div>
+
+    <div class="params-block">
+      <div class="param-row"><span>Grid Res</span><span id="p-res">64³ Voxels</span></div>
+      <div class="param-row"><span>Isovalue</span><span>0.00</span></div>
+      <div class="param-row"><span>Elements</span><span id="p-voxels">262,144</span></div>
+      <div class="param-row"><span>Triangles</span><span id="p-tris">0</span></div>
+    </div>
+
+    <div class="selector-grid">
+      <div class="diagram active" data-type="BARTH">
+        <canvas id="canvas-0"></canvas>
+        <div class="diagram-info">
+          <div class="diagram-name">BARTH SEXTIC</div>
+          <div class="diagram-tag">ICOSAHEDRAL NODES</div>
+        </div>
+      </div>
+
+      <div class="diagram" data-type="CHEBYSHEV">
+        <canvas id="canvas-1"></canvas>
+        <div class="diagram-info">
+          <div class="diagram-name">CHEBYSHEV SEXTIC</div>
+          <div class="diagram-tag">NODAL LABYRINTH</div>
+        </div>
+      </div>
+
+      <div class="diagram" data-type="TANGLE">
+        <canvas id="canvas-2"></canvas>
+        <div class="diagram-info">
+          <div class="diagram-name">TANGLECUBE</div>
+          <div class="diagram-tag">PERFORATED CAGE</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+    const SHAPE_TYPES = ["BARTH", "CHEBYSHEV", "TANGLE"];
+    const MOBILE_BREAKPOINT = 800;
+
+    const ATLAS_COLLECTION = {
+      BARTH: {
+        display: "Barth Sextic",
+        subtitle: "Icosahedral nodal crystal and symmetric apertures.",
+        equation: String.raw`\begin{aligned}
+          Q&=(\tau^2x^2-y^2)(\tau^2y^2-z^2)(\tau^2z^2-x^2),\\
+          0&=Q-\frac{2\tau+1}{4}(x^2+y^2+z^2-1)^2,\quad
+          \tau=\frac{1+\sqrt5}{2}
+        \end{aligned}`,
+        definition: "A sextic surface with icosahedral symmetry, staged here as a faceted nodal crystal. Its exact algebraic field preserves the characteristic punctures and sharp transitions while a distant radial penalty suppresses the affine branches outside the central sculpture.",
+        properties: [
+          "Degree-six icosahedral symmetry",
+          "Nodal apertures retained at extraction",
+          "Smooth exterior branch suppression",
+          "Gradient-normal crystalline response"
+        ],
+        domain: 1.72,
+        scale: 2.20,
+        framePadding: 1.06,
+        desktopResolution: 64,
+        mobileResolution: 46,
+        previewResolution: 30,
+        previewScale: 1.12,
+        initialRotation: [-0.18, 0.48, 0.12],
+        radialCrop: {
+          start: 1.40,
+          end: 1.68,
+          strength: 12.0
+        },
+        metric: {
+          gradientScale: 2.2,
+          curvatureScale: 4.2,
+          gradientBias: 0.035
+        },
+        material: {
+          rimPower: 2.15,
+          rimStrength: 0.72,
+          contourDensity: 8.8,
+          contourStrength: 0.20,
+          featureStrength: 0.36,
+          backscatter: 0.08,
+          flowTwist: 1.25,
+          warmAccent: 0.14
+        },
+        palette: {
+          base: "#030307",
+          deep: "#190d31",
+          edge: "#f3269c",
+          hot: "#d8cbff",
+          gradient: "linear-gradient(90deg, #030307, #190d31, #f3269c, #d8cbff)"
+        }
+      },
+
+      CHEBYSHEV: {
+        display: "Chebyshev Sextic",
+        subtitle: "Intersecting sixth-degree fields form a nodal crystal labyrinth.",
+        equation: String.raw`\begin{aligned}
+          T_6(t)&=32t^6-48t^4+18t^2-1,\\
+          u&=0.93x+0.27y-0.16z,\\
+          q&=-0.20x+0.95y+0.24z,\\
+          w&=0.21x-0.18y+0.96z,\\
+          F={}&T_6(0.82u)+T_6(0.82q)+T_6(0.82w)\\
+          &+0.20(u^2q^2+q^2w^2+w^2u^2)-0.36=0
+        \end{aligned}`,
+        definition: "A sixth-degree algebraic nodal labyrinth generated from three intersecting Chebyshev fields in a rotated coordinate frame. Repeating saddle chambers meet through perforated shells and deep internal tunnels, while a smooth outer containment field closes only the distant boundary.",
+        properties: [
+          "Sixth-degree intersecting Chebyshev field",
+          "Repeating saddle chambers and nodal junctions",
+          "Perforated shells with connected deep tunnels",
+          "Outer containment suppresses boundary debris"
+        ],
+        domain: 1.85,
+        scale: 1.28,
+        framePadding: 1.18,
+        desktopResolution: 64,
+        mobileResolution: 46,
+        previewResolution: 28,
+        previewScale: 1.12,
+        initialRotation: [0.42, -0.58, 0.18],
+        radialCrop: null,
+        componentFilter: {
+          minTrianglesAt64: 72,
+          relativeFloor: 0.00055
+        },
+        metric: {
+          gradientScale: 34.0,
+          curvatureScale: 3.6,
+          gradientBias: 0.09
+        },
+        material: {
+          rimPower: 2.25,
+          rimStrength: 0.44,
+          contourDensity: 9.4,
+          contourStrength: 0.10,
+          featureStrength: 0.18,
+          backscatter: 0.08,
+          flowTwist: 1.65,
+          warmAccent: 0.22
+        },
+        palette: {
+          base: "#02030b",
+          deep: "#06133f",
+          edge: "#19d8ff",
+          hot: "#c98778",
+          gradient: "linear-gradient(90deg, #02030b, #06133f, #19d8ff, #c98778)"
+        }
+      },
+
+      TANGLE: {
+        display: "Tanglecube Quartic",
+        subtitle: "Perforated algebraic cage with six directional portals.",
+        equation: String.raw`x^4-5x^2+y^4-5y^2+z^4-5z^2+11.8=0`,
+        definition: "A connected quartic cage organized around six directions. Rounded structural lobes bridge the axes while broad tunnels remain open, giving the surface the logic of a load-bearing algebraic pavilion instead of a smoothed metaball.",
+        properties: [
+          "Connected six-directional framework",
+          "Large axial tunnels remain open",
+          "Rounded quartic load-bearing lobes",
+          "Unsmooth architectural cage profile"
+        ],
+        domain: 2.48,
+        scale: 1.08,
+        framePadding: 1.40,
+        desktopResolution: 60,
+        mobileResolution: 44,
+        previewResolution: 28,
+        previewScale: 1.12,
+        initialRotation: [0.42, 0.54, 0.06],
+        radialCrop: null,
+        metric: {
+          gradientScale: 17.0,
+          curvatureScale: 2.5,
+          gradientBias: 0.07
+        },
+        material: {
+          rimPower: 1.8,
+          rimStrength: 0.58,
+          contourDensity: 7.2,
+          contourStrength: 0.17,
+          featureStrength: 0.32,
+          backscatter: 0.10,
+          flowTwist: 0.72,
+          warmAccent: 0.16
+        },
+        palette: {
+          base: "#030605",
+          deep: "#082a20",
+          edge: "#75f5c5",
+          hot: "#d4943b",
+          gradient: "linear-gradient(90deg, #030605, #082a20, #75f5c5, #d4943b)"
+        }
+      }
+    };
+
+    const canvas = document.getElementById("webgl");
+    const timer = new THREE.Timer();
+    const miniDiagrams = [];
+
+    let scene;
+    let camera;
+    let renderer;
+    let composer;
+    let controls;
+    let mainGeometry;
+    let mainMaterial;
+    let mainMesh;
+    let backgroundParticles;
+    let systemGlowRings;
+    let activeType = "BARTH";
+    let isTransitioning = false;
+    let transitionTime = 0;
+    let geometrySwapped = false;
+
+    init();
+
+    function isMobileLayout() {
+      return window.innerWidth < MOBILE_BREAKPOINT;
+    }
+
+    function resolutionFor(type) {
+      const config = ATLAS_COLLECTION[type];
+      return isMobileLayout() ? config.mobileResolution : config.desktopResolution;
+    }
+
+    function smooth01(value) {
+      const t = Math.max(0, Math.min(1, value));
+      return t * t * (3 - 2 * t);
+    }
+
+    function T6(t) {
+      const t2 = t * t;
+      const t4 = t2 * t2;
+      const t6 = t4 * t2;
+      return 32.0 * t6 - 48.0 * t4 + 18.0 * t2 - 1.0;
+    }
+
+    function evaluateField(type, x, y, z) {
+      let v;
+
+      if (type === "BARTH") {
+        const tau = (1 + Math.sqrt(5)) * 0.5;
+        const tau2 = tau * tau;
+        const r2 = x * x + y * y + z * z;
+
+        const Q =
+          (tau2 * x * x - y * y) *
+          (tau2 * y * y - z * z) *
+          (tau2 * z * z - x * x);
+
+        const alpha = (2 * tau + 1) / 4;
+        v = Q - alpha * Math.pow(r2 - 1, 2);
+      } else if (type === "CHEBYSHEV") {
+        const u = 0.93 * x + 0.27 * y - 0.16 * z;
+        const q = -0.20 * x + 0.95 * y + 0.24 * z;
+        const w = 0.21 * x - 0.18 * y + 0.96 * z;
+
+        const s = 0.82;
+        const r2 = u * u + q * q + w * w;
+
+        v =
+          T6(u * s) +
+          T6(q * s) +
+          T6(w * s) +
+          0.20 * (
+            u * u * q * q +
+            q * q * w * w +
+            w * w * u * u
+          ) -
+          0.36;
+
+        const r = Math.sqrt(r2);
+        const maxR = 1.62;
+
+        if (r > maxR) {
+          v += Math.pow((r - maxR) / 0.18, 2.0) * 20.0;
+        }
+      } else if (type === "TANGLE") {
+        v =
+          Math.pow(x, 4) - 5 * x * x +
+          Math.pow(y, 4) - 5 * y * y +
+          Math.pow(z, 4) - 5 * z * z +
+          11.8;
+      } else {
+        throw new Error(`Unknown algebraic field: ${type}`);
+      }
+
+      const crop = ATLAS_COLLECTION[type].radialCrop;
+      if (crop) {
+        const radius = Math.hypot(x, y, z);
+        if (radius > crop.start) {
+          const blend = smooth01((radius - crop.start) / (crop.end - crop.start));
+          const radialPenalty =
+            blend * blend * crop.strength * (1 + Math.hypot(v, 0.05));
+          v -= radialPenalty;
+        }
+      }
+
+      return Number.isFinite(v) ? v : 1e12;
+    }
+
+    function sampleVolumeField(type, resolution, domain) {
+      const values = new Float32Array(resolution * resolution * resolution);
+      const coords = new Float32Array(resolution);
+      const step = (domain * 2) / (resolution - 1);
+
+      for (let i = 0; i < resolution; i++) {
+        coords[i] = -domain + i * step;
+      }
+
+      let offset = 0;
+      for (let zIndex = 0; zIndex < resolution; zIndex++) {
+        const z = coords[zIndex];
+        for (let yIndex = 0; yIndex < resolution; yIndex++) {
+          const y = coords[yIndex];
+          for (let xIndex = 0; xIndex < resolution; xIndex++) {
+            values[offset++] = evaluateField(type, coords[xIndex], y, z);
+          }
+        }
+      }
+
+      return { values, coords, step };
+    }
+
+    function surfaceFrame(type, point, epsilon) {
+      const [x, y, z] = point;
+      const px = evaluateField(type, x + epsilon, y, z);
+      const nx = evaluateField(type, x - epsilon, y, z);
+      const py = evaluateField(type, x, y + epsilon, z);
+      const ny = evaluateField(type, x, y - epsilon, z);
+      const pz = evaluateField(type, x, y, z + epsilon);
+      const nz = evaluateField(type, x, y, z - epsilon);
+      const center = evaluateField(type, x, y, z);
+      const inverseSpan = 0.5 / epsilon;
+
+      const gx = (px - nx) * inverseSpan;
+      const gy = (py - ny) * inverseSpan;
+      const gz = (pz - nz) * inverseSpan;
+      const gradientMagnitude = Math.hypot(gx, gy, gz);
+
+      const inverseStepSquared = 1 / (epsilon * epsilon);
+      const laplacian = (px + nx + py + ny + pz + nz - 6 * center) * inverseStepSquared;
+      const metricConfig = ATLAS_COLLECTION[type].metric;
+      const curvatureProxy = Math.abs(laplacian) / (gradientMagnitude + metricConfig.gradientBias);
+      const curvatureMetric = curvatureProxy / (curvatureProxy + metricConfig.curvatureScale);
+      const gradientMetric = gradientMagnitude / (gradientMagnitude + metricConfig.gradientScale);
+      const metric = THREE.MathUtils.clamp(curvatureMetric * 0.72 + gradientMetric * 0.28, 0, 1);
+
+      if (gradientMagnitude > 1e-8 && Number.isFinite(gradientMagnitude)) {
+        return {
+          normal: [gx / gradientMagnitude, gy / gradientMagnitude, gz / gradientMagnitude],
+          metric
+        };
+      }
+
+      return {
+        normal: null,
+        metric: THREE.MathUtils.clamp(curvatureMetric, 0, 1)
+      };
+    }
+
+    function filterSmallComponents(type, positions, normals, metrics, resolution, domain) {
+      const filterConfig = ATLAS_COLLECTION[type].componentFilter;
+      const triangleCount = positions.length / 9;
+
+      if (!filterConfig || triangleCount === 0) {
+        return { positions, normals, metrics, removedTriangles: 0 };
+      }
+
+      const parent = new Int32Array(triangleCount);
+      const componentSize = new Int32Array(triangleCount);
+      const vertexOwner = new Map();
+      const step = (domain * 2) / (resolution - 1);
+      const quantization = Math.max(step * 0.002, 1e-6);
+
+      for (let triangle = 0; triangle < triangleCount; triangle++) {
+        parent[triangle] = triangle;
+        componentSize[triangle] = 1;
+      }
+
+      function findRoot(index) {
+        let root = index;
+        while (parent[root] !== root) root = parent[root];
+
+        while (parent[index] !== index) {
+          const next = parent[index];
+          parent[index] = root;
+          index = next;
+        }
+
+        return root;
+      }
+
+      function unionComponents(a, b) {
+        let rootA = findRoot(a);
+        let rootB = findRoot(b);
+        if (rootA === rootB) return;
+
+        if (componentSize[rootA] < componentSize[rootB]) {
+          const swap = rootA;
+          rootA = rootB;
+          rootB = swap;
+        }
+
+        parent[rootB] = rootA;
+        componentSize[rootA] += componentSize[rootB];
+      }
+
+      for (let triangle = 0; triangle < triangleCount; triangle++) {
+        const triangleOffset = triangle * 9;
+
+        for (let vertex = 0; vertex < 3; vertex++) {
+          const offset = triangleOffset + vertex * 3;
+          const qx = Math.round(positions[offset] / quantization);
+          const qy = Math.round(positions[offset + 1] / quantization);
+          const qz = Math.round(positions[offset + 2] / quantization);
+          const key = `${qx},${qy},${qz}`;
+          const owner = vertexOwner.get(key);
+
+          if (owner === undefined) {
+            vertexOwner.set(key, triangle);
+          } else {
+            unionComponents(triangle, owner);
+          }
+        }
+      }
+
+      const counts = new Map();
+      let largestComponent = 0;
+
+      for (let triangle = 0; triangle < triangleCount; triangle++) {
+        const root = findRoot(triangle);
+        const count = (counts.get(root) || 0) + 1;
+        counts.set(root, count);
+        largestComponent = Math.max(largestComponent, count);
+      }
+
+      const resolutionRatio = resolution / 64;
+      const absoluteMinimum = Math.max(
+        8,
+        Math.round(filterConfig.minTrianglesAt64 * resolutionRatio * resolutionRatio)
+      );
+      const relativeMinimum = Math.round(largestComponent * filterConfig.relativeFloor);
+      const minimumTriangles = Math.max(absoluteMinimum, relativeMinimum);
+      const filteredPositions = [];
+      const filteredNormals = [];
+      const filteredMetrics = [];
+      let keptTriangles = 0;
+
+      for (let triangle = 0; triangle < triangleCount; triangle++) {
+        const root = findRoot(triangle);
+        if ((counts.get(root) || 0) < minimumTriangles) continue;
+
+        const positionOffset = triangle * 9;
+        const metricOffset = triangle * 3;
+        for (let index = 0; index < 9; index++) {
+          filteredPositions.push(positions[positionOffset + index]);
+          filteredNormals.push(normals[positionOffset + index]);
+        }
+        for (let index = 0; index < 3; index++) {
+          filteredMetrics.push(metrics[metricOffset + index]);
+        }
+        keptTriangles++;
+      }
+
+      return {
+        positions: filteredPositions,
+        normals: filteredNormals,
+        metrics: filteredMetrics,
+        removedTriangles: triangleCount - keptTriangles
+      };
+    }
+
+    function extractIsosurface(type, resolution, domain) {
+      const { values, coords, step } = sampleVolumeField(type, resolution, domain);
+      const positions = [];
+      const normals = [];
+      const metrics = [];
+      const iso = 0;
+      const epsilon = Math.max(step * 0.36, 1e-4);
+      const valueIndex = (x, y, z) => x + resolution * (y + resolution * z);
+
+      const corners = [
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]
+      ];
+
+      const tetrahedra = [
+        [0, 5, 1, 6], [0, 1, 2, 6], [0, 2, 3, 6],
+        [0, 3, 7, 6], [0, 7, 4, 6], [0, 4, 5, 6]
+      ];
+
+      function interpolate(pointA, pointB, valueA, valueB) {
+        const denominator = valueB - valueA;
+        let amount = Math.abs(denominator) > 1e-12 ? (iso - valueA) / denominator : 0.5;
+        if (!Number.isFinite(amount)) amount = 0.5;
+        amount = THREE.MathUtils.clamp(amount, 0, 1);
+
+        return [
+          pointA[0] + amount * (pointB[0] - pointA[0]),
+          pointA[1] + amount * (pointB[1] - pointA[1]),
+          pointA[2] + amount * (pointB[2] - pointA[2])
+        ];
+      }
+
+      function addTriangle(point0, point1, point2) {
+        if (![...point0, ...point1, ...point2].every(Number.isFinite)) return;
+
+        let p0 = point0;
+        let p1 = point1;
+        let p2 = point2;
+        let ux = p1[0] - p0[0];
+        let uy = p1[1] - p0[1];
+        let uz = p1[2] - p0[2];
+        let vx = p2[0] - p0[0];
+        let vy = p2[1] - p0[1];
+        let vz = p2[2] - p0[2];
+        let faceX = uy * vz - uz * vy;
+        let faceY = uz * vx - ux * vz;
+        let faceZ = ux * vy - uy * vx;
+        let faceLength = Math.hypot(faceX, faceY, faceZ);
+
+        if (!Number.isFinite(faceLength) || faceLength < 1e-10) return;
+
+        const centroid = [
+          (p0[0] + p1[0] + p2[0]) / 3,
+          (p0[1] + p1[1] + p2[1]) / 3,
+          (p0[2] + p1[2] + p2[2]) / 3
+        ];
+        const centerFrame = surfaceFrame(type, centroid, epsilon);
+
+        if (centerFrame.normal) {
+          const alignment =
+            faceX * centerFrame.normal[0] +
+            faceY * centerFrame.normal[1] +
+            faceZ * centerFrame.normal[2];
+
+          if (alignment < 0) {
+            const swap = p1;
+            p1 = p2;
+            p2 = swap;
+            ux = p1[0] - p0[0];
+            uy = p1[1] - p0[1];
+            uz = p1[2] - p0[2];
+            vx = p2[0] - p0[0];
+            vy = p2[1] - p0[1];
+            vz = p2[2] - p0[2];
+            faceX = uy * vz - uz * vy;
+            faceY = uz * vx - ux * vz;
+            faceZ = ux * vy - uy * vx;
+            faceLength = Math.hypot(faceX, faceY, faceZ);
+          }
+        }
+
+        const fallbackNormal = [faceX / faceLength, faceY / faceLength, faceZ / faceLength];
+        const trianglePoints = [p0, p1, p2];
+
+        for (const point of trianglePoints) {
+          const frame = surfaceFrame(type, point, epsilon);
+          const normal = frame.normal || fallbackNormal;
+          positions.push(point[0], point[1], point[2]);
+          normals.push(normal[0], normal[1], normal[2]);
+          metrics.push(Number.isFinite(frame.metric) ? frame.metric : 0);
+        }
+      }
+
+      for (let zIndex = 0; zIndex < resolution - 1; zIndex++) {
+        for (let yIndex = 0; yIndex < resolution - 1; yIndex++) {
+          for (let xIndex = 0; xIndex < resolution - 1; xIndex++) {
+            const points = [];
+            const cellValues = [];
+
+            for (let cornerIndex = 0; cornerIndex < 8; cornerIndex++) {
+              const ox = xIndex + corners[cornerIndex][0];
+              const oy = yIndex + corners[cornerIndex][1];
+              const oz = zIndex + corners[cornerIndex][2];
+              points.push([coords[ox], coords[oy], coords[oz]]);
+              cellValues.push(values[valueIndex(ox, oy, oz)]);
+            }
+
+            for (const tetrahedron of tetrahedra) {
+              const positive = [];
+              const negative = [];
+
+              for (const localIndex of tetrahedron) {
+                const vertex = { point: points[localIndex], value: cellValues[localIndex] };
+                (vertex.value >= iso ? positive : negative).push(vertex);
+              }
+
+              if (positive.length === 1) {
+                const a = interpolate(positive[0].point, negative[0].point, positive[0].value, negative[0].value);
+                const b = interpolate(positive[0].point, negative[1].point, positive[0].value, negative[1].value);
+                const c = interpolate(positive[0].point, negative[2].point, positive[0].value, negative[2].value);
+                addTriangle(a, b, c);
+              } else if (positive.length === 3) {
+                const a = interpolate(negative[0].point, positive[0].point, negative[0].value, positive[0].value);
+                const b = interpolate(negative[0].point, positive[1].point, negative[0].value, positive[1].value);
+                const c = interpolate(negative[0].point, positive[2].point, negative[0].value, positive[2].value);
+                addTriangle(a, c, b);
+              } else if (positive.length === 2) {
+                const a = interpolate(positive[0].point, negative[0].point, positive[0].value, negative[0].value);
+                const b = interpolate(positive[0].point, negative[1].point, positive[0].value, negative[1].value);
+                const c = interpolate(positive[1].point, negative[1].point, positive[1].value, negative[1].value);
+                const d = interpolate(positive[1].point, negative[0].point, positive[1].value, negative[0].value);
+                addTriangle(a, b, c);
+                addTriangle(a, c, d);
+              }
+            }
+          }
+        }
+      }
+
+      const filtered = filterSmallComponents(
+        type,
+        positions,
+        normals,
+        metrics,
+        resolution,
+        domain
+      );
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(filtered.positions, 3));
+      geometry.setAttribute("normal", new THREE.Float32BufferAttribute(filtered.normals, 3));
+      geometry.setAttribute("aCurve", new THREE.Float32BufferAttribute(filtered.metrics, 1));
+      geometry.userData.removedTriangles = filtered.removedTriangles;
+      geometry.center();
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+
+      return geometry;
+    }
+
+    function createCinematicShader(config) {
+      const { palette, material } = config;
+
+      return new THREE.ShaderMaterial({
+        side: THREE.DoubleSide,
+        transparent: false,
+        depthWrite: true,
+        extensions: { derivatives: true },
+        uniforms: {
+          uTime: { value: 0 },
+          uMorph: { value: 0 },
+          uColorBase: { value: new THREE.Color(palette.base) },
+          uColorDeep: { value: new THREE.Color(palette.deep) },
+          uColorEdge: { value: new THREE.Color(palette.edge) },
+          uColorAccent: { value: new THREE.Color(palette.hot) },
+          uRimPower: { value: material.rimPower },
+          uRimStrength: { value: material.rimStrength },
+          uContourDensity: { value: material.contourDensity },
+          uContourStrength: { value: material.contourStrength },
+          uFeatureStrength: { value: material.featureStrength },
+          uBackscatter: { value: material.backscatter },
+          uFlowTwist: { value: material.flowTwist },
+          uWarmAccent: { value: material.warmAccent }
+        },
+        vertexShader: `
+          attribute float aCurve;
+          varying vec3 vObjectPos;
+          varying vec3 vNormal;
+          varying vec3 vViewDir;
+          varying float vMetric;
+          uniform float uTime;
+          uniform float uMorph;
+
+          float hash31(vec3 p) {
+            p = fract(p * 0.1031);
+            p += dot(p, p.yzx + 33.33);
+            return fract((p.x + p.y) * p.z);
+          }
+
+          float valueNoise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(
+              mix(
+                mix(hash31(i), hash31(i + vec3(1, 0, 0)), f.x),
+                mix(hash31(i + vec3(0, 1, 0)), hash31(i + vec3(1, 1, 0)), f.x),
+                f.y
+              ),
+              mix(
+                mix(hash31(i + vec3(0, 0, 1)), hash31(i + vec3(1, 0, 1)), f.x),
+                mix(hash31(i + vec3(0, 1, 1)), hash31(i + vec3(1, 1, 1)), f.x),
+                f.y
+              ),
+              f.z
+            );
+          }
+
+          void main() {
+            vec3 p = position;
+            float fineNoise = valueNoise(position * 10.0 + vec3(uTime * 0.08));
+            p += normal * (fineNoise - 0.5) * uMorph * 0.055;
+
+            vObjectPos = position;
+            vMetric = aCurve;
+            vNormal = normalize(normalMatrix * normal);
+
+            vec4 worldPosition = modelMatrix * vec4(p, 1.0);
+            vec4 viewPosition = viewMatrix * worldPosition;
+            vViewDir = normalize(-viewPosition.xyz);
+            gl_Position = projectionMatrix * viewPosition;
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vObjectPos;
+          varying vec3 vNormal;
+          varying vec3 vViewDir;
+          varying float vMetric;
+
+          uniform float uTime;
+          uniform float uMorph;
+          uniform vec3 uColorBase;
+          uniform vec3 uColorDeep;
+          uniform vec3 uColorEdge;
+          uniform vec3 uColorAccent;
+          uniform float uRimPower;
+          uniform float uRimStrength;
+          uniform float uContourDensity;
+          uniform float uContourStrength;
+          uniform float uFeatureStrength;
+          uniform float uBackscatter;
+          uniform float uFlowTwist;
+          uniform float uWarmAccent;
+
+          float hash31(vec3 p) {
+            p = fract(p * 0.1031);
+            p += dot(p, p.yzx + 33.33);
+            return fract((p.x + p.y) * p.z);
+          }
+
+          float valueNoise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(
+              mix(
+                mix(hash31(i), hash31(i + vec3(1, 0, 0)), f.x),
+                mix(hash31(i + vec3(0, 1, 0)), hash31(i + vec3(1, 1, 0)), f.x),
+                f.y
+              ),
+              mix(
+                mix(hash31(i + vec3(0, 0, 1)), hash31(i + vec3(1, 0, 1)), f.x),
+                mix(hash31(i + vec3(0, 1, 1)), hash31(i + vec3(1, 1, 1)), f.x),
+                f.y
+              ),
+              f.z
+            );
+          }
+
+          float flowLine(vec3 p, float metric) {
+            float theta = atan(p.z, p.x);
+            float radialSweep = length(p.xz) * uContourDensity;
+            float surfaceFlow =
+              radialSweep +
+              p.y * (1.1 + uFlowTwist) +
+              sin(theta * 3.0 + p.y * 1.7) * (0.28 + uFlowTwist * 0.08);
+            float distanceToLine = abs(fract(surfaceFlow) - 0.5);
+            float width = max(fwidth(surfaceFlow) * 1.1, 0.018);
+            float line = 1.0 - smoothstep(0.025, 0.025 + width, distanceToLine);
+            float sparseMask = smoothstep(0.56, 0.78, valueNoise(p * 1.35 + vec3(4.3)));
+            return line * sparseMask * (0.22 + metric * 0.78);
+          }
+
+          void main() {
+            vec3 normal = normalize(vNormal);
+            if (!gl_FrontFacing) normal = -normal;
+
+            vec3 viewDirection = normalize(vViewDir);
+            vec3 keyLight = normalize(vec3(0.46, 0.72, 0.86));
+            vec3 fillLight = normalize(vec3(-0.72, 0.18, 0.52));
+            float key = max(dot(normal, keyLight), 0.0);
+            float fill = max(dot(normal, fillLight), 0.0);
+            float facing = max(dot(normal, viewDirection), 0.0);
+            float rim = pow(1.0 - facing, uRimPower);
+            float feature = smoothstep(0.38, 0.92, vMetric);
+
+            float depthVariation = 0.5 + 0.5 * normal.y;
+            vec3 color = mix(uColorBase, uColorDeep, 0.22 + depthVariation * 0.26);
+            color *= 0.50 + key * 0.48 + fill * 0.14;
+
+            float backscatter = pow(1.0 - facing, 2.1) * (0.35 + 0.65 * max(dot(-normal, keyLight), 0.0));
+            color += uColorDeep * backscatter * uBackscatter;
+            color = mix(color, uColorEdge, feature * 0.035);
+            color += uColorEdge * rim * uRimStrength;
+            color += mix(uColorEdge, uColorAccent, uWarmAccent) *
+              feature * uFeatureStrength * (0.055 + rim * 0.945);
+
+            float contour = flowLine(vObjectPos, vMetric);
+            color += mix(uColorEdge, uColorAccent, feature * uWarmAccent) *
+              contour * uContourStrength * (0.28 + rim * 0.72);
+
+            float focalNoise = smoothstep(0.78, 0.91, valueNoise(vObjectPos * 1.8 + vec3(0.0, uTime * 0.025, 0.0)));
+            color += uColorAccent * focalNoise *
+              (0.18 + feature * 0.82) * uWarmAccent * 0.85;
+
+            if (uMorph > 0.001) {
+              float fineField = valueNoise(vObjectPos * 10.0 + vec3(uTime * 0.035));
+              float coherentSweep = smoothstep(-2.8, 2.8, vObjectPos.y + vObjectPos.x * 0.16);
+              float dissolveField = mix(fineField, coherentSweep, 0.18);
+              if (dissolveField < uMorph) discard;
+
+              float dissolveEdge = 1.0 - smoothstep(0.0, 0.032, dissolveField - uMorph);
+              color += mix(uColorEdge, uColorAccent, 0.35) * dissolveEdge * 1.25;
+            }
+
+            gl_FragColor = vec4(max(color, vec3(0.0)), 1.0);
+          }
+        `
+      });
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 0, 9.5);
+
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance"
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.92;
+
+      composer = new EffectComposer(renderer);
+      composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      composer.addPass(new RenderPass(scene, camera));
+      const bloom = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.26,
+        0.34,
+        0.86
+      );
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.enablePan = false;
+      controls.minDistance = 4.5;
+      controls.maxDistance = 14;
+
+      buildMainSculpture(activeType);
+      createAtmosphere();
+      setupMiniDiagrams();
+      setupSelectorEvents();
+      setupCollapseEvents();
+      updateHudTexts(activeType, false);
+
+      window.addEventListener("resize", onResize);
+
+      setTimeout(() => {
+        const bootScreen = document.getElementById("boot-screen");
+        if (!bootScreen) return;
+        bootScreen.style.opacity = "0";
+        setTimeout(() => bootScreen.remove(), 800);
+      }, 550);
+
+      animate();
+    }
+
+    function buildMainSculpture(type) {
+      if (mainMesh) {
+        scene.remove(mainMesh);
+        mainGeometry.dispose();
+        mainMaterial.dispose();
+      }
+
+      const config = ATLAS_COLLECTION[type];
+      const resolution = resolutionFor(type);
+      mainGeometry = extractIsosurface(type, resolution, config.domain);
+      mainMaterial = createCinematicShader(config);
+      mainMesh = new THREE.Mesh(mainGeometry, mainMaterial);
+      if (Array.isArray(config.scale)) {
+        mainMesh.scale.set(...config.scale);
+      } else {
+        mainMesh.scale.setScalar(config.scale);
+      }
+      mainMesh.rotation.set(...config.initialRotation);
+      scene.add(mainMesh);
+      frameMainSculpture(config);
+
+      const triangleCount = mainGeometry.getAttribute("position").count / 3;
+      document.getElementById("p-res").textContent = `${resolution}³ Voxels`;
+      document.getElementById("p-voxels").textContent = Math.pow(resolution, 3).toLocaleString();
+      document.getElementById("p-tris").textContent = triangleCount.toLocaleString();
+    }
+
+    function frameMainSculpture(config = ATLAS_COLLECTION[activeType]) {
+      if (!mainGeometry?.boundingSphere || !camera) return;
+
+      const scaleMaximum = Math.max(mainMesh.scale.x, mainMesh.scale.y, mainMesh.scale.z);
+      const radius = Math.max(mainGeometry.boundingSphere.radius * scaleMaximum, 0.01);
+      const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+      const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * camera.aspect);
+      const verticalDistance = radius / Math.sin(verticalFov * 0.5);
+      const horizontalDistance = radius / Math.sin(horizontalFov * 0.5);
+      const distance = Math.max(verticalDistance, horizontalDistance) * config.framePadding;
+      const direction = camera.position.lengthSq() > 0
+        ? camera.position.clone().normalize()
+        : new THREE.Vector3(0, 0, 1);
+
+      camera.position.copy(direction.multiplyScalar(distance));
+      camera.near = Math.max(0.05, distance - radius * 2.6);
+      camera.far = Math.max(100, distance + radius * 12);
+      camera.updateProjectionMatrix();
+
+      if (controls) {
+        controls.minDistance = Math.max(radius * 1.25, 3.5);
+        controls.maxDistance = Math.max(distance * 2.1, 14);
+        controls.update();
+      }
+    }
+
+    function createAtmosphere() {
+      const particleCount = isMobileLayout() ? 1100 : 1800;
+      const particleGeometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+
+      for (let i = 0; i < positions.length; i++) {
+        positions[i] = (Math.random() - 0.5) * 45;
+      }
+
+      particleGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const particleMaterial = new THREE.PointsMaterial({
+        color: ATLAS_COLLECTION[activeType].palette.edge,
+        size: 0.045,
+        transparent: true,
+        opacity: 0.18,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      backgroundParticles = new THREE.Points(particleGeometry, particleMaterial);
+      scene.add(backgroundParticles);
+
+      systemGlowRings = new THREE.Group();
+      for (let index = 0; index < 3; index++) {
+        const ringMaterial = new THREE.LineBasicMaterial({
+          color: ATLAS_COLLECTION[activeType].palette.deep,
+          transparent: true,
+          opacity: 0.13
+        });
+        const radius = 6 + index * 1.5;
+        const ringGeometry = new THREE.EdgesGeometry(new THREE.TorusGeometry(radius, 0.006, 3, 48));
+        const ringMesh = new THREE.LineSegments(ringGeometry, ringMaterial);
+        ringMesh.rotation.x = Math.random() * Math.PI;
+        ringMesh.rotation.y = Math.random() * Math.PI;
+        systemGlowRings.add(ringMesh);
+      }
+      scene.add(systemGlowRings);
+    }
+
+    function setupMiniDiagrams() {
+      const containers = [...document.querySelectorAll(".diagram")];
+
+      SHAPE_TYPES.forEach((type, index) => {
+        const container = containers[index];
+        const config = ATLAS_COLLECTION[type];
+        const rect = container.getBoundingClientRect();
+        const miniEngine = createMiniEngine(
+          container.querySelector("canvas"),
+          rect.width || 126,
+          rect.height || 75
+        );
+        const geometry = extractIsosurface(type, config.previewResolution, config.domain);
+        const solidMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(config.palette.deep),
+          side: THREE.DoubleSide
+        });
+        const wireMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(config.palette.edge),
+          wireframe: true,
+          transparent: true,
+          opacity: 0.34,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        const group = new THREE.Group();
+        group.add(new THREE.Mesh(geometry, solidMaterial));
+        group.add(new THREE.Mesh(geometry, wireMaterial));
+        group.rotation.set(...config.initialRotation);
+        miniEngine.scene.add(group);
+
+        const sphere = geometry.boundingSphere;
+        const radius = Math.max(sphere?.radius || 1, 0.01);
+        const fieldOfView = THREE.MathUtils.degToRad(miniEngine.camera.fov);
+        const distance = (radius / Math.sin(fieldOfView * 0.5)) * config.previewScale;
+        const viewVector = new THREE.Vector3(4, 2.7, 5).normalize();
+        miniEngine.camera.position.copy(viewVector.multiplyScalar(distance));
+        miniEngine.camera.near = Math.max(0.01, distance - radius * 2.2);
+        miniEngine.camera.far = distance + radius * 3.5;
+        miniEngine.camera.lookAt(0, 0, 0);
+        miniEngine.camera.updateProjectionMatrix();
+
+        miniDiagrams.push({
+          ...miniEngine,
+          container,
+          mesh: group,
+          baseRotation: new THREE.Euler(...config.initialRotation)
+        });
+      });
+    }
+
+    function createMiniEngine(previewCanvas, width, height) {
+      const previewScene = new THREE.Scene();
+      const previewCamera = new THREE.PerspectiveCamera(38, width / height, 0.01, 30);
+      const previewRenderer = new THREE.WebGLRenderer({
+        canvas: previewCanvas,
+        alpha: true,
+        antialias: true,
+        powerPreference: "low-power"
+      });
+      previewRenderer.setSize(width, height, false);
+      previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      return { scene: previewScene, camera: previewCamera, renderer: previewRenderer };
+    }
+
+    function setupSelectorEvents() {
+      document.querySelectorAll(".diagram").forEach((container) => {
+        container.addEventListener("click", () => {
+          triggerTransition(container.dataset.type);
+        });
+      });
+    }
+
+    function setupCollapseEvents() {
+      const hudLeft = document.getElementById("hud-left");
+      const hudRight = document.getElementById("hud-right");
+
+      document.getElementById("close-left").addEventListener("click", () => {
+        hudLeft.classList.add("collapsed");
+        document.body.classList.add("left-collapsed");
+      });
+
+      document.getElementById("trigger-left").addEventListener("click", () => {
+        hudLeft.classList.remove("collapsed");
+        document.body.classList.remove("left-collapsed");
+      });
+
+      document.getElementById("close-right").addEventListener("click", () => {
+        hudRight.classList.add("collapsed");
+        document.body.classList.add("right-collapsed");
+      });
+
+      document.getElementById("trigger-right").addEventListener("click", () => {
+        hudRight.classList.remove("collapsed");
+        document.body.classList.remove("right-collapsed");
+      });
+
+      if (isMobileLayout()) {
+        hudLeft.classList.add("collapsed");
+        hudRight.classList.add("collapsed");
+        document.body.classList.add("left-collapsed", "right-collapsed");
+      }
+    }
+
+    function triggerTransition(newType) {
+      if (!SHAPE_TYPES.includes(newType) || newType === activeType || isTransitioning) return;
+
+      activeType = newType;
+      isTransitioning = true;
+      geometrySwapped = false;
+      transitionTime = 0;
+
+      document.querySelectorAll(".diagram").forEach((element) => element.classList.remove("active"));
+      document.querySelector(`.diagram[data-type="${newType}"]`).classList.add("active");
+      updateHudTexts(newType, true);
+    }
+
+    function updateHudTexts(type, animateUpdate = true) {
+      const config = ATLAS_COLLECTION[type];
+      const hud = document.getElementById("hud-left");
+
+      if (animateUpdate) {
+        hud.classList.remove("updating");
+        void hud.offsetWidth;
+        hud.classList.add("updating");
+      }
+
+      document.documentElement.style.setProperty("--theme-color", config.palette.edge);
+      document.documentElement.style.setProperty("--theme-glow", `${config.palette.edge}40`);
+
+      if (backgroundParticles) backgroundParticles.material.color.set(config.palette.edge);
+      if (systemGlowRings) {
+        systemGlowRings.children.forEach((ring) => ring.material.color.set(config.palette.deep));
+      }
+
+      const applyContent = () => {
+        document.getElementById("hudTitle").textContent = config.display;
+        document.getElementById("hud-subtitle").textContent = config.subtitle;
+        document.getElementById("definition").textContent = config.definition;
+        document.getElementById("hud-legend").style.background = config.palette.gradient;
+
+        const mathContainer = document.getElementById("math-formula");
+        try {
+          window.katex.render(config.equation, mathContainer, {
+            throwOnError: false,
+            displayMode: true
+          });
+        } catch (error) {
+          mathContainer.textContent = config.equation;
+        }
+
+        const list = document.getElementById("properties-list");
+        list.replaceChildren();
+        config.properties.forEach((property) => {
+          const item = document.createElement("li");
+          item.textContent = property;
+          list.appendChild(item);
+        });
+
+        hud.classList.remove("updating");
+      };
+
+      if (animateUpdate) {
+        setTimeout(applyContent, 400);
+      } else {
+        applyContent();
+      }
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+      composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      frameMainSculpture();
+
+      miniDiagrams.forEach((diagram) => {
+        const rect = diagram.container.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        diagram.camera.aspect = rect.width / rect.height;
+        diagram.camera.updateProjectionMatrix();
+        diagram.renderer.setSize(rect.width, rect.height, false);
+      });
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      timer.update();
+      const delta = Math.min(timer.getDelta(), 0.1);
+      const time = timer.getElapsed();
+
+      if (mainMesh) {
+        mainMesh.rotation.y += delta * 0.085;
+        mainMesh.rotation.z += (Math.sin(time * 0.15) * 0.055 - mainMesh.rotation.z) * delta * 0.7;
+        mainMaterial.uniforms.uTime.value = time;
+
+        if (isTransitioning) {
+          transitionTime += delta * 1.18;
+
+          if (transitionTime < 1) {
+            mainMaterial.uniforms.uMorph.value = smooth01(transitionTime);
+          } else if (!geometrySwapped) {
+            buildMainSculpture(activeType);
+            mainMaterial.uniforms.uMorph.value = 1;
+            geometrySwapped = true;
+          } else if (transitionTime < 2) {
+            mainMaterial.uniforms.uMorph.value = smooth01(2 - transitionTime);
+          } else {
+            mainMaterial.uniforms.uMorph.value = 0;
+            isTransitioning = false;
+          }
+        }
+      }
+
+      if (backgroundParticles) {
+        backgroundParticles.rotation.y -= delta * 0.015;
+      }
+
+      if (systemGlowRings) {
+        systemGlowRings.rotation.y += delta * 0.03;
+        systemGlowRings.rotation.x += delta * 0.01;
+      }
+
+      controls.update();
+      composer.render();
+
+      miniDiagrams.forEach((diagram, index) => {
+        diagram.mesh.rotation.y = diagram.baseRotation.y + time * 0.22 + index * 0.8;
+        diagram.mesh.rotation.x = diagram.baseRotation.x + Math.sin(time * 0.15 + index) * 0.16;
+        diagram.renderer.render(diagram.scene, diagram.camera);
+      });
+    }
+  </script>
+</body>
+</html>
